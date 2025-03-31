@@ -1,0 +1,50 @@
+trigger:
+- main
+
+pool:
+  vmImage: 'ubuntu-latest'  # Agente de Microsoft (o usa self-hosted si es necesario)
+
+variables:
+  SONARQUBE_VERSION: '9.9.2-community'
+  SONARQUBE_PORT: '9000'
+  SONAR_PROJECT_KEY: 'mi-proyecto'
+  SONAR_HOST_URL: 'http://localhost:9000'
+  SONAR_TOKEN: 'admin'  # SonarQube por defecto usa 'admin' sin contraseña
+
+steps:
+- script: |
+    echo "Iniciando SonarQube en un contenedor Docker..."
+    docker run -d --name sonarqube -p $(SONARQUBE_PORT):9000 sonarqube:$(SONARQUBE_VERSION)
+    
+    echo "Esperando a que SonarQube esté listo..."
+    for i in {1..60}; do
+      if curl --silent --fail $(SONAR_HOST_URL)/api/system/health | grep -q '"status":"UP"'; then
+        echo "SonarQube está listo!"
+        break
+      fi
+      echo "Esperando SonarQube..."
+      sleep 5
+    done
+  displayName: 'Levantar SonarQube en Docker'
+
+- script: |
+    echo "Instalando SonarQube Scanner..."
+    curl -o sonarqube-scanner.zip https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-5.0.1.3006-linux.zip
+    unzip sonarqube-scanner.zip
+    export PATH=$PWD/sonar-scanner-5.0.1.3006-linux/bin:$PATH
+  displayName: 'Instalar SonarQube Scanner'
+
+- script: |
+    echo "Ejecutando análisis de código con SonarQube..."
+    sonar-scanner \
+      -Dsonar.projectKey=$(SONAR_PROJECT_KEY) \
+      -Dsonar.sources=. \
+      -Dsonar.host.url=$(SONAR_HOST_URL) \
+      -Dsonar.login=$(SONAR_TOKEN)
+  displayName: 'Ejecutar análisis con SonarQube Scanner'
+
+- script: |
+    echo "Deteniendo y eliminando SonarQube..."
+    docker stop sonarqube
+    docker rm sonarqube
+  displayName: 'Detener SonarQube'
